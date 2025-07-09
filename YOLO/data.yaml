@@ -1,0 +1,12 @@
+train: ../train/images
+val: ../valid/images
+
+nc: 5
+names: ['apple', 'banana', 'not apple', 'not banana', 'orange']
+
+roboflow:
+  workspace: dillon-maltese-dttmb
+  project: fruit-gjn8c-csvtn
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/dillon-maltese-dttmb/fruit-gjn8c-csvtn/dataset/1
