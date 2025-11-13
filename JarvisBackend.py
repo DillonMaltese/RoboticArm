@@ -1,6 +1,5 @@
 import os, time, asyncio, tempfile
 import speech_recognition as sr
-from gtts import gTTS
 from playsound import playsound
 import edge_tts
 

@@ -3,6 +3,7 @@ import serial
 import speech_recognition as sr
 from playsound import playsound
 from JarvisBackend import speak, transcribe_once, get_input
+import math
 
 WAKE_WORD = "jarvis"
 SERIAL_PORT = "/dev/tty.usbmodem1101"
@@ -67,16 +68,20 @@ def handle_robot_command(text: str):
         return
 
     # move X inches forward/backward
-    m = re.search(r"move\s+(\d+(?:\.\d+)?)\s*inch(?:es)?\s+(forward|backward)", t)
+    m = re.search(r"(go|move)\s+to\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", t)
     if m:
-        inches = m.group(1)
-        direction = m.group(2)
-        if direction == "forward":
-            speak(f"Moving {inches} inches forward.")
-            send_cmd(f"FORWARD {inches}")
-        else:
-            speak(f"Moving {inches} inches backward.")
-            send_cmd(f"BACKWARD {inches}")
+        X = float(m.group(2)); Y = float(m.group(3)); Z = float(m.group(4))
+        # TODO: put your real link lengths here:
+        L1, L2, L3 = 1.00, 0.50, 0.25  # units must match X,Y,Z
+        J0, th1, th2, th3 = ik_planar_point_down(X, Y, Z, L1, L2, L3)
+
+        # (Optional) also command base J0 later if you wire it; for now we do J1–J3
+        j1_deg = math.degrees(th1)
+        j2_deg = math.degrees(th2)
+        j3_deg = math.degrees(th3)
+
+        speak(f"Moving to {X} {Y} {Z}.")
+        send_joint_targets_deg(j1_deg, j2_deg, j3_deg)
         return
 
     # legacy fallbacks
@@ -88,6 +93,33 @@ def handle_robot_command(text: str):
         return
 
     speak("Not sure what you're trying to say.")
+
+def ik_planar_point_down(X, Y, Z, L1, L2, L3):
+    # Base yaw
+    J0 = math.atan2(Y, X)
+    xp = math.hypot(X, Y)
+    yp = Z
+
+    gamma = -math.pi / 2  # tool points down
+
+    # wrist center (xe, ye)
+    xe = xp - L3 * math.cos(gamma)  # cos(-pi/2)=0 -> xe = xp
+    ye = yp - L3 * math.sin(gamma)  # sin(-pi/2)=-1 -> ye = yp + L3
+
+    # 2-link IK for shoulder/elbow (elbow-up)
+    c2 = (xe*xe + ye*ye - L1*L1 - L2*L2) / (2*L1*L2)
+    c2 = max(-1.0, min(1.0, c2))
+    s2 = math.sqrt(max(0.0, 1 - c2*c2))  # elbow-up
+
+    th2 = math.atan2(s2, c2)
+    th1 = math.atan2(ye, xe) - math.atan2(L2*s2, L1 + L2*c2)
+    th3 = gamma - (th1 + th2)
+
+    return J0, th1, th2, th3  # radians
+
+def send_joint_targets_deg(j1_deg, j2_deg, j3_deg):
+    # Format: JSET <J1_deg> <J2_deg> <J3_deg>
+    send_cmd(f"JSET {j1_deg:.2f} {j2_deg:.2f} {j3_deg:.2f}", expect_ok=True)
 
 if __name__ == "__main__":
     rec = sr.Recognizer()
