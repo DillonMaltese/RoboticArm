@@ -2,15 +2,15 @@
 #include <MultiStepper.h>
 #include <math.h>
 
-float L1 = 34.0;   // Shoulder-to-elbow [in]
-float L2 = 22.0;   // Elbow-to-wrist [in]
-float L3 = 12.0;   // Wrist-to-probe tip [in]
-float move = 3.0; // distance to move forward (+x) [in]
+float L1 = 34.0;   // Length (inches)
+float L2 = 22.0;   // Length (inches)
+float L3 = 12.0;   // Length (inches)
+float move = 3.0;  // Set move forward distance
 
-// Steps per degree for each joint (motor steps * microsteps * gearbox / 360)
-float stepsPerDeg_J1 = (200.0 * 42000.0 * 100.0) / 360.0; // Shoulder
-float stepsPerDeg_J2 = (200.0 * 42000.0 * 100.0) / 360.0; // Elbow
-float stepsPerDeg_J3 = (200.0 * 42000.0 * 13.0)  / 360.0; // Wrist
+// Steps per degree for each joint (steps * gearbox / 360)
+float stepsPerDeg_J1 = (42000.0 * 100.0) / 360.0; // Shoulder
+float stepsPerDeg_J2 = (42000.0 * 100.0) / 360.0; // Elbow
+float stepsPerDeg_J3 = (42000.0 * 13.0)  / 360.0; // Wrist
 
 // Starting joint angles (deg)
 float shoulder_deg = 30.0;
@@ -31,18 +31,21 @@ float wrist_deg    = -90.0 - (shoulder_deg + elbow_deg); // keep probe vertical
 #define J3_BRK  4
 #define J3_ALM  5
 
+// Initializing all motors
 AccelStepper stepJ1(AccelStepper::DRIVER, J1_STEP, J1_DIR);
 AccelStepper stepJ2(AccelStepper::DRIVER, J2_STEP, J2_DIR);
 AccelStepper stepJ3(AccelStepper::DRIVER, J3_STEP, J3_DIR);
 MultiStepper steppers;
 
-float MAX_SPEED = 2000;
-float ACCEL     = 4000;
+// Speed and Acceleration that the motors will move with
+float MAX_SPEED = 1000;
+float ACCEL     = 2000;
 
 void forwardKinematics(float j1, float j2, float &x, float &z) {
+  // Converting angles to radians
   float t1 = radians(j1);
   float t2 = radians(j2);
-  // wrist center
+  // Where the wrist is currently positioned
   float xw = L1*cos(t1) + L2*cos(t1 + t2);
   float zw = L1*sin(t1) + L2*sin(t1 + t2);
   // tool tip (probe) offset by L3 vertically downward (γ = -90°)
