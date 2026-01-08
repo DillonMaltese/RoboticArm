@@ -23,14 +23,24 @@ def plot_robotic_arm(L1, L2, L3, x, y, z):
         print("The point is out of reach for the robotic arm.")
         return
     
+    # Need to first calculate phi in order to help find the elbow angle
+    #Using law of cosines
+    cos_phi = (L1**2 + L2**2 - distance**2) / (2 * L1 * L2)
+    phi = math.acos(cos_phi)
+    theta_elbow = math.pi - phi  # Elbow angle
+
+    # Calculating angle from the shoulder to the wrist point
+    alpha = math.atan2(wrist_y, wrist_x)
+    # Angle inside the triangle to the shoulder
+    cos_beta = math.atan2(L2*math.sin(theta_elbow), L1 + L2*math.cos(theta_elbow))
+
     theta_shoulder = 0
-    theta_elbow = 0
     
     math.cosine(theta_elbow) 
     
     # In order to get the probe pointing down always we need all the angles added together to be -pi/2 radians
     # This makes the probe always pointing straight down
-    # Base angle + Elbow angle + Wrist angle = -pi/2
+    # Shoulder angle + Elbow angle + Wrist angle = -pi/2
     theta_wrist = -math.pi / 2  - theta_shoulder - theta_elbow
     
     print(f"Base angle (radians): {theta_base}")
