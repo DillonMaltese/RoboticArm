@@ -2,7 +2,7 @@ import math
 
 def plot_robotic_arm(L1, L2, L3, x, y, z):
     # To find base angle you take atan2(y,x) which will give the proper angle while taking quadrants into account.
-    theta_base = math.atan2(y, x)  # in radians
+    #theta_base = math.atan2(y, x)  # in radians
     print(f"Base angle (radians): {theta_base}")
     print(f"Base angle (degrees): {math.degrees(theta_base)}") # in degrees
     
@@ -23,20 +23,36 @@ def plot_robotic_arm(L1, L2, L3, x, y, z):
         print("The point is out of reach for the robotic arm.")
         return
     
-    # Need to first calculate phi in order to help find the elbow angle
-    #Using law of cosines
-    cos_phi = (L1**2 + L2**2 - distance**2) / (2 * L1 * L2)
-    phi = math.acos(cos_phi)
-    theta_elbow = math.pi - phi  # Elbow angle
+    c2 = (distance**2 - L1**2 - L2**2) / (2 * L1 * L2)
+    c2 = max(-1.0, min(1.0, c2))  # clamp for safety
+    s2 = math.sqrt(1 - c2**2)
+    
+    # Two possible elbow angles (elbow-up / elbow-down)
+    theta_elbow_1 = math.atan2(+s2, c2)
+    theta_elbow_2 = math.atan2(-s2, c2)
+
+    # Compute shoulder for each candidate
+    beta_1 = math.atan2(L2 * math.sin(theta_elbow_1), L1 + L2 * math.cos(theta_elbow_1))
+    theta_shoulder_1 = alpha - beta_1
+
+    beta_2 = math.atan2(L2 * math.sin(theta_elbow_2), L1 + L2 * math.cos(theta_elbow_2))
+    theta_shoulder_2 = alpha - beta_2
+    
+    if theta_shoulder_1 >= 0:
+        theta_shoulder,
+    if theta_shoulder_2 >= 0:
+        candidates.append((theta_shoulder_2, theta_elbow_2))
+
+    if not candidates:
+        print("No IK solution satisfies the shoulder constraint (theta_shoulder >= 0).")
+        return
 
     # Calculating angle from the shoulder to the wrist point
     alpha = math.atan2(wrist_y, wrist_x)
     # Angle inside the triangle to the shoulder
-    cos_beta = math.atan2(L2*math.sin(theta_elbow), L1 + L2*math.cos(theta_elbow))
+    beta = math.atan2(L2*math.sin(theta_elbow), L1 + L2*math.cos(theta_elbow))
 
-    theta_shoulder = 0
-    
-    math.cosine(theta_elbow) 
+    theta_shoulder = alpha - beta # Shoulder angle
     
     # In order to get the probe pointing down always we need all the angles added together to be -pi/2 radians
     # This makes the probe always pointing straight down
