@@ -2,7 +2,7 @@ import math
 
 def plot_robotic_arm(L1, L2, L3, x, y, z):
     # To find base angle you take atan2(y,x) which will give the proper angle while taking quadrants into account.
-    #theta_base = math.atan2(y, x)  # in radians
+    theta_base = math.atan2(y, x)  # in radians
     print(f"Base angle (radians): {theta_base}")
     print(f"Base angle (degrees): {math.degrees(theta_base)}") # in degrees
     
@@ -39,13 +39,15 @@ def plot_robotic_arm(L1, L2, L3, x, y, z):
     theta_shoulder_2 = alpha - beta_2
     
     if theta_shoulder_1 >= 0:
-        theta_shoulder,
-    if theta_shoulder_2 >= 0:
-        candidates.append((theta_shoulder_2, theta_elbow_2))
-
-    if not candidates:
-        print("No IK solution satisfies the shoulder constraint (theta_shoulder >= 0).")
+        theta_shoulder = theta_shoulder_1
+        theta_elbow = theta_elbow_1
+    elif theta_shoulder_2 >= 0:
+        theta_shoulder = theta_shoulder_2
+        theta_elbow = theta_elbow_2
+    else: 
+        print("No valid shoulder angle found.")
         return
+
 
     # Calculating angle from the shoulder to the wrist point
     alpha = math.atan2(wrist_y, wrist_x)
@@ -72,4 +74,3 @@ print(math.atan2(5, 5) * 180 / math.pi) #45 degrees
 print(math.atan2(5, -5) * 180 / math.pi) #135 degrees
 print(360 + math.atan2(-5, -5) * 180 / math.pi) #225 degrees
 print(360 + math.atan2(-5, 5) * 180 / math.pi) #315 degrees
-
