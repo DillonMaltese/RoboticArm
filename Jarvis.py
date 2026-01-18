@@ -1,13 +1,18 @@
 import os, time, re
 import serial
 import speech_recognition as sr
-from playsound import playsound
 from JarvisBackend import speak, transcribe_once, get_input
 import math
+from IK_DEMO import plot_robotic_arm
 
 WAKE_WORD = "jarvis"
 SERIAL_PORT = "/dev/tty.usbmodem1101"
 BAUD = 115200
+
+L1, L2, L3 = 10, 7.5, 2.5  # example link lengths in inches
+Z_OFFSET = 0  # base height of shoulder from ground in inches
+
+USE_MAPPED_ANGLES = True  # whether to use mapped angles for servo commands
 
 ser = None
 
@@ -34,6 +39,7 @@ def send_cmd(cmd: str, expect_ok=True, speak_ok=False, max_wait_s=8.0):
         if not s:
             speak("I couldn't connect to the robot controller.")
             return
+        # Creating and sending a command to Arduino
         line = (cmd.strip() + "\n").encode("ascii")
         s.write(line); s.flush()
 
@@ -71,17 +77,22 @@ def handle_robot_command(text: str):
     m = re.search(r"(go|move)\s+to\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", t)
     if m:
         X = float(m.group(2)); Y = float(m.group(3)); Z = float(m.group(4))
-        # TODO: put your real link lengths here:
-        L1, L2, L3 = 1.00, 0.50, 0.25  # units must match X,Y,Z
-        J0, th1, th2, th3 = ik_planar_point_down(X, Y, Z, L1, L2, L3)
 
-        # (Optional) also command base J0 later if you wire it; for now we do J1–J3
-        j1_deg = math.degrees(th1)
-        j2_deg = math.degrees(th2)
-        j3_deg = math.degrees(th3)
+        angles = ik_planar_point_down(X, Y, Z)
+        if angles is None:
+            speak("That point is out of reach.")
+            return
+
+        base_rad, shoulder_rad, elbow_rad, wrist_rad = angles
+
+        # For now: command shoulder/elbow/wrist
+        j0_deg = math.degrees(base_rad)
+        j1_deg = math.degrees(shoulder_rad)
+        j2_deg = math.degrees(elbow_rad)
+        j3_deg = math.degrees(wrist_rad)
 
         speak(f"Moving to {X} {Y} {Z}.")
-        send_joint_targets_deg(j1_deg, j2_deg, j3_deg)
+        send_joint_targets_deg4(j0_deg, j1_deg, j2_deg, j3_deg)
         return
 
     # legacy fallbacks
@@ -94,32 +105,23 @@ def handle_robot_command(text: str):
 
     speak("Not sure what you're trying to say.")
 
-def ik_planar_point_down(X, Y, Z, L1, L2, L3):
-    # Base yaw
-    J0 = math.atan2(Y, X)
-    xp = math.hypot(X, Y)
-    yp = Z
+def ik_planar_point_down(X, Y, Z):
+    """
+    Uses IK_DEMO.plot_robotic_arm().
 
-    gamma = -math.pi / 2  # tool points down
+    Returns:
+      (base_rad, shoulder_rad, elbow_rad, wrist_rad)  # either raw or mapped depending on USE_MAPPED_ANGLES
+    """
+    global L1, L2, L3
+    sol = plot_robotic_arm(L1, L2, L3, X, Y, Z, z_offset=Z_OFFSET)
+    if sol is None:
+        return None
 
-    # wrist center (xe, ye)
-    xe = xp - L3 * math.cos(gamma)  # cos(-pi/2)=0 -> xe = xp
-    ye = yp - L3 * math.sin(gamma)  # sin(-pi/2)=-1 -> ye = yp + L3
+    raw, mapped = sol
+    return mapped if USE_MAPPED_ANGLES else raw
 
-    # 2-link IK for shoulder/elbow (elbow-up)
-    c2 = (xe*xe + ye*ye - L1*L1 - L2*L2) / (2*L1*L2)
-    c2 = max(-1.0, min(1.0, c2))
-    s2 = math.sqrt(max(0.0, 1 - c2*c2))  # elbow-up
-
-    th2 = math.atan2(s2, c2)
-    th1 = math.atan2(ye, xe) - math.atan2(L2*s2, L1 + L2*c2)
-    th3 = gamma - (th1 + th2)
-
-    return J0, th1, th2, th3  # radians
-
-def send_joint_targets_deg(j1_deg, j2_deg, j3_deg):
-    # Format: JSET <J1_deg> <J2_deg> <J3_deg>
-    send_cmd(f"JSET {j1_deg:.2f} {j2_deg:.2f} {j3_deg:.2f}", expect_ok=True)
+def send_joint_targets_deg4(j0_deg, j1_deg, j2_deg, j3_deg):
+    send_cmd(f"JSET4 {j0_deg:.2f} {j1_deg:.2f} {j2_deg:.2f} {j3_deg:.2f}", expect_ok=True)
 
 if __name__ == "__main__":
     rec = sr.Recognizer()
