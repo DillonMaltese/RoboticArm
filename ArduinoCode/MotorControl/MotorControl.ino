@@ -1,58 +1,106 @@
-// Define direction and pulse pins for each motor
-#define DIR 4
-#define PUL 3
+// // Your wiring:
+// // PUL- + DIR- + COM- -> Arduino GND
+// // PUL+ -> D10
+// // DIR+ -> D11
+// // ENA not connected (fine)
 
-#define DIR1 12
-#define PUL1 11
+// const int PIN_STEP = 10;   // PUL+
+// const int PIN_DIR  = 11;   // DIR+
+// const int PIN_ALM  = 13;   // ALM output from driver (optional)
 
-#define DIR2 6
-#define PUL2 5
+// const unsigned int PULSE_US = 300;  // pulse width (>= 5–10us usually; 300us is very safe)
+// const unsigned int GAP_US   = 300;
 
-// Duration to step in each direction (in milliseconds)
-unsigned long stepDuration = 3000;
+// void stepN(long n) {
+//   for (long i = 0; i < n; i++) {
+//     digitalWrite(PIN_STEP, HIGH);
+//     delayMicroseconds(PULSE_US);
+//     digitalWrite(PIN_STEP, LOW);
+//     delayMicroseconds(GAP_US);
+//   }
+// }
 
-// Step pulse delay (in microseconds)
-unsigned int pulseDelay = 3000;
+// void setup() {
+//   Serial.begin(115200);
+//   delay(300);
+//   Serial.println("CL57T 1-joint test (common-cathode)");
 
-// Tracks direction state: 0 = forward, 1 = backward
-bool directionState = 0;
+//   pinMode(PIN_STEP, OUTPUT);
+//   pinMode(PIN_DIR, OUTPUT);
+//   digitalWrite(PIN_STEP, LOW);   // idle low
+
+//   pinMode(PIN_ALM, INPUT_PULLUP); // ALM is from driver -> Arduino input
+// }
+
+// void loop() {
+//   if (digitalRead(PIN_ALM) == LOW) {
+//     Serial.println("ALARM ACTIVE (ALM low). Fix driver alarm first.");
+//     delay(500);
+//     return;
+//   }
+
+//   Serial.println("Forward...");
+//   digitalWrite(PIN_DIR, HIGH);
+//   stepN(2000);
+//   delay(1000);
+
+//   Serial.println("Reverse...");
+//   digitalWrite(PIN_DIR, LOW);
+//   stepN(2000);
+//   delay(1500);
+// }
+
+// Wiring:
+// PUL- + DIR- + COM- -> Arduino GND
+// PUL+ -> D10
+// DIR+ -> D11
+// ENA+ -> 5V, ENA- -> GND
+
+const int PIN_STEP = 10;   // PUL+
+const int PIN_DIR  = 11;   // DIR+
+const int PIN_ALM  = 13;   // ALM output from driver (optional)
+
+const unsigned int PULSE_US = 1200;
+const unsigned int GAP_US   = 1200;
+
+void stepN(long n) {
+  for (long i = 0; i < n; i++) {
+    digitalWrite(PIN_STEP, HIGH);
+    delayMicroseconds(PULSE_US);
+    digitalWrite(PIN_STEP, LOW);
+    delayMicroseconds(GAP_US);
+  }
+}
 
 void setup() {
-  // Set all motor pins as output
-  pinMode(DIR, OUTPUT);
-  pinMode(PUL, OUTPUT);
-  
-  pinMode(DIR1, OUTPUT);
-  pinMode(PUL1, OUTPUT);
+  Serial.begin(115200);
+  delay(300);
+  Serial.println("CL57T base joint test");
 
-  pinMode(DIR2, OUTPUT);
-  pinMode(PUL2, OUTPUT);
+  pinMode(PIN_STEP, OUTPUT);
+  pinMode(PIN_DIR, OUTPUT);
+  digitalWrite(PIN_STEP, LOW);
+
+  pinMode(PIN_ALM, INPUT_PULLUP);
+
+  Serial.println("Waiting for base to settle...");
+  delay(3000);
 }
 
 void loop() {
-  // Set direction for all motors
-  digitalWrite(DIR, directionState);
-  digitalWrite(DIR1, directionState);
-  digitalWrite(DIR2, directionState);
-
-  // Run motors for the defined duration
-  unsigned long startTime = millis();
-  while (millis() - startTime < stepDuration) {
-    // Pulse all motors at the same time
-    //digitalWrite(PUL, HIGH);
-    digitalWrite(PUL1, HIGH);
-    //digitalWrite(PUL2, HIGH);
-    delayMicroseconds(pulseDelay);
-    
-    //digitalWrite(PUL, LOW);
-    digitalWrite(PUL1, LOW);
-    //digitalWrite(PUL2, LOW);
-    delayMicroseconds(pulseDelay);
+  if (digitalRead(PIN_ALM) == LOW) {
+    Serial.println("ALARM ACTIVE (ALM low)");
+    delay(500);
+    return;
   }
 
-  // Toggle direction
-  directionState = !directionState;
+  Serial.println("Forward BIG...");
+  digitalWrite(PIN_DIR, HIGH);
+  stepN(20000);
+  delay(1500);
 
-  // Optional delay before changing direction
-  delay(1000);
+  Serial.println("Reverse BIG...");
+  digitalWrite(PIN_DIR, LOW);
+  stepN(20000);
+  delay(2500);
 }

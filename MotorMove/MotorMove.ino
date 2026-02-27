@@ -1,4 +1,11 @@
-// ======= PINS =======
+#include <AccelStepper.h>
+#include <MultiStepper.h>
+#include <math.h>
+
+float stepsPerDeg_J1 = (42000.0 * 100.0) / 360.0; // Shoulder
+float stepsPerDeg_J2 = (42000.0 * 100.0) / 360.0; // Elbow
+float stepsPerDeg_J3 = (42000.0 * 13.0)  / 360.0; // Wrist
+
 const int PIN_STEP1 = 2;  // wrist
 const int PIN_DIR1  = 3;
 const int PIN_BRK1  = 4;
@@ -14,101 +21,88 @@ const int PIN_DIR3  = 11;
 const int PIN_BRK3  = 12;
 const int PIN_ALM3  = 13;
 
-const int STEPS_PER_REV = 3200;  // matches DIP
+// Initializing all motors
+AccelStepper stepJ1(AccelStepper::DRIVER, PIN_STEP1, PIN_DIR1); // shoulder
+AccelStepper stepJ2(AccelStepper::DRIVER, PIN_STEP2, PIN_DIR2); // elbow
+AccelStepper stepJ3(AccelStepper::DRIVER, PIN_STEP3, PIN_DIR3); // wrist
+MultiStepper steppers;
 
-int STEPS_PER_5DEG_J1 = 200;  // shoulder placeholder
-int STEPS_PER_5DEG_J2 = 200;  // elbow placeholder
-int STEPS_PER_5DEG_J3 = 200;  // wrist placeholder
+float MAX_SPEED = 1000;
 
-float j1_deg_curr = 0.0;
-float j2_deg_curr = 0.0;
-float j3_deg_curr = 0.0;
+void moveToAngles(float j1, float j2, float j3) {
+  long targets[3];
+  targets[0] = lround(j1 * stepsPerDeg_J1);
+  targets[1] = lround(j2 * stepsPerDeg_J2);
+  targets[2] = lround(j3 * stepsPerDeg_J3);
 
+  steppers.moveTo(targets);
 
-// ======= SETUP =======
+  while (stepJ1.distanceToGo() || stepJ2.distanceToGo() || stepJ3.distanceToGo()) {
+    stepJ1.run();
+    stepJ2.run();
+    stepJ3.run();
+  }
+}
+
+void getCurrentAngles(float &j1, float &j2, float &j3) {
+  j1 = stepJ1.currentPosition() / stepsPerDeg_J1;
+  j2 = stepJ2.currentPosition() / stepsPerDeg_J2;
+  j3 = stepJ3.currentPosition() / stepsPerDeg_J3;
+}
+
+void testOneJointRelative(const char* name, int jointIndex, float deltaDeg, int dwellMs = 800) {
+  Serial.print("\n--- Testing "); Serial.print(name); Serial.println(" (relative) ---");
+
+  float j1, j2, j3;
+  getCurrentAngles(j1, j2, j3);
+
+  float j1_start = j1, j2_start = j2, j3_start = j3;
+
+  // +delta
+  if (jointIndex == 1) j1 += deltaDeg;
+  if (jointIndex == 2) j2 += deltaDeg;
+  if (jointIndex == 3) j3 += deltaDeg;
+  moveToAngles(j1, j2, j3);
+  delay(dwellMs);
+
+  // back
+  moveToAngles(j1_start, j2_start, j3_start);
+  delay(dwellMs);
+
+  // -delta
+  j1 = j1_start; j2 = j2_start; j3 = j3_start;
+  if (jointIndex == 1) j1 -= deltaDeg;
+  if (jointIndex == 2) j2 -= deltaDeg;
+  if (jointIndex == 3) j3 -= deltaDeg;
+  moveToAngles(j1, j2, j3);
+  delay(dwellMs);
+
+  // back
+  moveToAngles(j1_start, j2_start, j3_start);
+  delay(dwellMs);
+}
+
 void setup() {
   Serial.begin(115200);
+  delay(500);
 
-  pinMode(PIN_STEP1, OUTPUT); pinMode(PIN_DIR1, OUTPUT);
-  pinMode(PIN_STEP2, OUTPUT); pinMode(PIN_DIR2, OUTPUT);
-  pinMode(PIN_STEP3, OUTPUT); pinMode(PIN_DIR3, OUTPUT);
-  pinMode(PIN_BRK1, OUTPUT);  pinMode(PIN_BRK2, OUTPUT);  pinMode(PIN_BRK3, OUTPUT);
-  pinMode(PIN_ALM1, INPUT_PULLUP); pinMode(PIN_ALM2, INPUT_PULLUP); pinMode(PIN_ALM3, INPUT_PULLUP);
+  stepJ1.setMaxSpeed(MAX_SPEED);
+  stepJ2.setMaxSpeed(MAX_SPEED);
+  stepJ3.setMaxSpeed(MAX_SPEED);
 
-  // release brakes
-  digitalWrite(PIN_BRK1, HIGH);
-  digitalWrite(PIN_BRK2, HIGH);
-  digitalWrite(PIN_BRK3, HIGH);
-  delay(300);
+  steppers.addStepper(stepJ1);
+  steppers.addStepper(stepJ2);
+  steppers.addStepper(stepJ3);
 
-  Serial.println("OK READY");
+  // Relative test: define "start" as zero for all joints
+  stepJ1.setCurrentPosition(0);
+  stepJ2.setCurrentPosition(0);
+  stepJ3.setCurrentPosition(0);
+
+  const float DELTA = 30.0;
+  testOneJointRelative("Shoulder (J1)", 1, DELTA);
+  testOneJointRelative("Elbow (J2)",    2, DELTA);
+  testOneJointRelative("Wrist (J3)",    3, DELTA);
 }
 
-static void stepN(int stepPin, int dirPin, bool dir, int n) {
-  digitalWrite(dirPin, dir ? HIGH : LOW);
-  for (int i = 0; i < n; i++) {
-    digitalWrite(stepPin, HIGH);
-    delayMicroseconds(1000);
-    digitalWrite(stepPin, LOW);
-    delayMicroseconds(1000);
-  }
-}
-
-static int degToSteps(float deg, int steps_per_5deg) {
-  // Placeholder: linear scale from "steps per 5 deg"
-  float steps = (deg / 5.0f) * steps_per_5deg;
-  return (int)roundf(steps);
-}
-
-static void moveJointToDeg(int joint, float target_deg) {
-  // choose pins & scale
-  int stepPin, dirPin, steps_per_5deg;
-  float *p_curr;
-
-  if (joint == 1) { stepPin = PIN_STEP3; dirPin = PIN_DIR3; steps_per_5deg = STEPS_PER_5DEG_J1; p_curr = &j1_deg_curr; }
-  else if (joint == 2) { stepPin = PIN_STEP2; dirPin = PIN_DIR2; steps_per_5deg = STEPS_PER_5DEG_J2; p_curr = &j2_deg_curr; }
-  else { stepPin = PIN_STEP1; dirPin = PIN_DIR1; steps_per_5deg = STEPS_PER_5DEG_J3; p_curr = &j3_deg_curr; }
-
-  float delta_deg = target_deg - (*p_curr);
-  bool dir = (delta_deg >= 0);
-  int steps = degToSteps(fabs(delta_deg), steps_per_5deg);
-
-  stepN(stepPin, dirPin, dir, steps);
-  *p_curr = target_deg;
-}
-
-// ======= MAIN LOOP =======
-String cmd;
-void loop() {
-  while (Serial.available()) {
-    char c = Serial.read();
-    if (c == '\r') continue;
-    if (c == '\n') {
-      cmd.trim();
-      if (cmd.startsWith("JSET")) {
-        // Format: JSET <J1_deg> <J2_deg> <J3_deg>
-        float a, b, cdeg;
-        int n = sscanf(cmd.c_str(), "JSET %f %f %f", &a, &b, &cdeg);
-        if (n == 3) {
-          moveJointToDeg(1, a);  // shoulder
-          moveJointToDeg(2, b);  // elbow
-          moveJointToDeg(3, cdeg); // wrist
-          Serial.println("OK");
-        } else {
-          Serial.println("ERR BADARGS");
-        }
-      } else if (cmd.equalsIgnoreCase("HELLO")) {
-        // simple wave/demo
-        moveJointToDeg(3, j3_deg_curr + 10);
-        moveJointToDeg(3, j3_deg_curr - 10);
-        moveJointToDeg(3, j3_deg_curr);
-        Serial.println("OK");
-      } else {
-        Serial.println("ERR UNKNOWN");
-      }
-      cmd = "";
-    } else {
-      cmd += c;
-    }
-  }
-}
+void loop() {}
