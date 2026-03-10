@@ -10,19 +10,20 @@ RATE   = "-10%"
 PITCH  = "-10Hz"
 VOLUME = "+0%"
 
+# Turning text into speech + saving it to file
 async def _edge_tts_to_file(text: str, path: str):
     communicate = edge_tts.Communicate(text, VOICE, rate=RATE, volume=VOLUME, pitch=PITCH)
     await communicate.save(path)
 
+# Running the text to speech loop
 def _run_tts_sync(text: str, path: str):
     loop = asyncio.new_event_loop()
     try:
         asyncio.set_event_loop(loop)
         loop.run_until_complete(_edge_tts_to_file(text, path))
     finally:
-        try: loop.close()
-        except: pass
-        asyncio.set_event_loop(asyncio.new_event_loop())
+        loop.close()
+        asyncio.set_event_loop(None)
 
 def speak(text: str):
     out = None
@@ -53,6 +54,7 @@ def get_input(rec, source):
         if any(p in text for p in ("never mind","cancel","thanks jarvis","go to sleep")):
             speak("okay"); return None
         return text
+    return None
     
 # Speech recognition function
 def transcribe_once(rec, src, limit=None):

@@ -123,34 +123,113 @@ def move_relative(dx, dy, dz):
 
 
 
-# L1, L2, L3 = 10, 10, 2
+# L1, L2, L3 = 28.5, 16, 11
 
-# tests = [
-#     (10, 0, 0, 0),     # (x,y,z,z_offset)
-#     (7, 7, 0, 0),
-#     (10, 0, 5, 0),
-#     (10, 0, 0, 5),     # shoulder 5 inches above table
-# ]
+# sol = plot_robotic_arm(L1, L2, L3, 19, 0, 17.5, z_offset=0)
 
-# for x, y, z, z_off in tests:
-#     print("\n--- TEST ---")
-#     print("Target:", (x, y, z), "z_offset:", z_off)
+# raw, mapped = sol
 
-#     sol = plot_robotic_arm(L1, L2, L3, x, y, z, z_offset=z_off)
-#     if sol is None:
-#         continue
+# tb, ts, te, tw = raw
+# x2, y2, z2, gamma = forward_kinematics(L1, L2, L3, tb, ts, te, tw, z_offset=0)
 
-#     raw, mapped = sol
+# print("FK result:", (x2, y2, z2))
 
-#     tb, ts, te, tw = raw
-#     x2, y2, z2, gamma = forward_kinematics(L1, L2, L3, tb, ts, te, tw, z_offset=z_off)
+# # tests = [
+# #     (10, 0, 0, 0),     # (x,y,z,z_offset)
+# #     (7, 7, 0, 0),
+# #     (10, 0, 5, 0),
+# #     (10, 0, 0, 5),     # shoulder 5 inches above table
+# # ]
 
-#     print("FK result:", (x2, y2, z2))
-#     print("Position error:", (x2-x, y2-y, z2-z))
-#     print("Gamma (deg):", math.degrees(gamma))  # should be ~ -90
+# # for x, y, z, z_off in tests:
+# #     print("\n--- TEST ---")
+# #     print("Target:", (x, y, z), "z_offset:", z_off)
+
+# #     sol = plot_robotic_arm(L1, L2, L3, x, y, z, z_offset=z_off)
+# #     if sol is None:
+# #         continue
+
+# #     raw, mapped = sol
+
+# #     tb, ts, te, tw = raw
+# #     x2, y2, z2, gamma = forward_kinematics(L1, L2, L3, tb, ts, te, tw, z_offset=z_off)
+
+# #     print("FK result:", (x2, y2, z2))
+# #     print("Position error:", (x2-x, y2-y, z2-z))
+# #     print("Gamma (deg):", math.degrees(gamma))  # should be ~ -90
 
 
-# print(math.atan2(5, 5) * 180 / math.pi) #45 degrees
-# print(math.atan2(5, -5) * 180 / math.pi) #135 degrees
-# print(360 + math.atan2(-5, -5) * 180 / math.pi) #225 degrees
-# print(360 + math.atan2(-5, 5) * 180 / math.pi) #315 degrees
+# # print(math.atan2(5, 5) * 180 / math.pi) #45 degrees
+# # print(math.atan2(5, -5) * 180 / math.pi) #135 degrees
+# # print(360 + math.atan2(-5, -5) * 180 / math.pi) #225 degrees
+# # print(360 + math.atan2(-5, 5) * 180 / math.pi) #315 degrees
+
+def print_angle_set(label, angles_rad):
+    b, s, e, w = angles_rad
+    print(f"\n{label}")
+    print(f"  Base:     {math.degrees(b):.2f} deg")
+    print(f"  Shoulder: {math.degrees(s):.2f} deg")
+    print(f"  Elbow:    {math.degrees(e):.2f} deg")
+    print(f"  Wrist:    {math.degrees(w):.2f} deg")
+
+def print_delta(label, start_angles, target_angles):
+    db = math.degrees(target_angles[0] - start_angles[0])
+    ds = math.degrees(target_angles[1] - start_angles[1])
+    de = math.degrees(target_angles[2] - start_angles[2])
+    dw = math.degrees(target_angles[3] - start_angles[3])
+
+    print(f"\n{label}")
+    print(f"  Base move:     {db:+.2f} deg")
+    print(f"  Shoulder move: {ds:+.2f} deg")
+    print(f"  Elbow move:    {de:+.2f} deg")
+    print(f"  Wrist move:    {dw:+.2f} deg")
+
+L1, L2, L3 = 28.5, 16, 11
+Z_OFFSET = 0
+
+# --------------------------------------------------
+# Starting pose
+# Base forward, shoulder vertical up, elbow horizontal out, wrist straight down
+# --------------------------------------------------
+start_raw = (
+    0.0,                 # base
+    math.pi / 2,         # shoulder = 90 deg
+    -math.pi / 2,        # elbow = -90 deg
+    -math.pi / 2         # wrist = -90 deg
+)
+
+# Compute mapped version of the start pose
+start_mapped = (
+    wrap_rad(math.pi / 2 - start_raw[0]),
+    wrap_rad(math.pi / 2 - start_raw[1]),
+    wrap_rad(math.pi / 2 - start_raw[2]),
+    wrap_rad(math.pi / 2 - start_raw[3]),
+)
+
+# Current tip position from starting pose
+x0, y0, z0, gamma0 = forward_kinematics(L1, L2, L3, *start_raw, z_offset=Z_OFFSET)
+
+print(f"Starting tip position: ({x0:.2f}, {y0:.2f}, {z0:.2f})")
+
+# --------------------------------------------------
+# Move 3 inches forward
+# --------------------------------------------------
+target_x = x0 + 3
+target_y = y0
+target_z = z0
+
+print(f"Target tip position:   ({target_x:.2f}, {target_y:.2f}, {target_z:.2f})")
+
+# Solve IK
+sol = plot_robotic_arm(L1, L2, L3, target_x, target_y, target_z, z_offset=Z_OFFSET)
+
+if sol is not None:
+    target_raw, target_mapped = sol
+
+    print_angle_set("Starting RAW angles", start_raw)
+    print_angle_set("Target RAW angles", target_raw)
+    print_delta("RAW joint movement needed", start_raw, target_raw)
+
+    print_angle_set("Starting MAPPED angles", start_mapped)
+    print_angle_set("Target MAPPED angles", target_mapped)
+    print_delta("MAPPED joint movement needed", start_mapped, target_mapped)

@@ -1,4 +1,4 @@
-import os, time, re
+import time, re
 import serial
 import speech_recognition as sr
 from JarvisBackend import speak, transcribe_once, get_input
@@ -9,7 +9,7 @@ WAKE_WORD = "jarvis"
 SERIAL_PORT = "/dev/tty.usbmodem1101"
 BAUD = 115200
 
-L1, L2, L3 = 10, 7.5, 2.5  # example link lengths in inches
+L1, L2, L3 = 28.5, 16, 11  # example link lengths in inches
 Z_OFFSET = 0  # base height of shoulder from ground in inches
 
 USE_MAPPED_ANGLES = True  # whether to use mapped angles for servo commands
@@ -67,12 +67,6 @@ def handle_robot_command(text: str):
     t = (text or "").lower().strip()
     print(f"[command] {t}")
 
-    # say hello / wave
-    if "say hello" in t or "wave" in t or t == "hello":
-        send_cmd("HELLO")
-        speak("Hello, my name is Jarvis. Nice to meet you.")
-        return
-
     # move X inches forward/backward
     m = re.search(r"(go|move)\s+to\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", t)
     if m:
@@ -106,13 +100,6 @@ def handle_robot_command(text: str):
     speak("Not sure what you're trying to say.")
 
 def ik_planar_point_down(X, Y, Z):
-    """
-    Uses IK_DEMO.plot_robotic_arm().
-
-    Returns:
-      (base_rad, shoulder_rad, elbow_rad, wrist_rad)  # either raw or mapped depending on USE_MAPPED_ANGLES
-    """
-    global L1, L2, L3
     sol = plot_robotic_arm(L1, L2, L3, X, Y, Z, z_offset=Z_OFFSET)
     if sol is None:
         return None

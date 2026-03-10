@@ -1,106 +1,79 @@
-// // Your wiring:
-// // PUL- + DIR- + COM- -> Arduino GND
-// // PUL+ -> D10
-// // DIR+ -> D11
-// // ENA not connected (fine)
+#include <AccelStepper.h>
 
-// const int PIN_STEP = 10;   // PUL+
-// const int PIN_DIR  = 11;   // DIR+
-// const int PIN_ALM  = 13;   // ALM output from driver (optional)
+// BASE
+// const int STEP_PIN = 24;   // PUL+
+// const int DIR_PIN  = 25;   // DIR+
+// const int ALM_PIN  = 32;   // ALM input (optional)
+// const long GEAR_RATIO = 5; // base reduction
 
-// const unsigned int PULSE_US = 300;  // pulse width (>= 5–10us usually; 300us is very safe)
-// const unsigned int GAP_US   = 300;
+// SHOULDER
+const int STEP_PIN = 30;     // PUL+  (shoulder from our Mega map)
+const int DIR_PIN  = 31;     // DIR+
+const int ALM_PIN  = 36;     // ALM input (optional)
+const long GEAR_RATIO = 100; // shoulder reduction
 
-// void stepN(long n) {
-//   for (long i = 0; i < n; i++) {
-//     digitalWrite(PIN_STEP, HIGH);
-//     delayMicroseconds(PULSE_US);
-//     digitalWrite(PIN_STEP, LOW);
-//     delayMicroseconds(GAP_US);
-//   }
-// }
+// const int STEP_PIN = 22;
+// const int DIR_PIN  = 23;
+// const int ALM_PIN  = 33;
+// const long GEAR_RATIO = 100;
 
-// void setup() {
-//   Serial.begin(115200);
-//   delay(300);
-//   Serial.println("CL57T 1-joint test (common-cathode)");
+// const int STEP_PIN = 26;
+// const int DIR_PIN  = 27;
+// const int ALM_PIN  = 33;
+// const long GEAR_RATIO = 10;
 
-//   pinMode(PIN_STEP, OUTPUT);
-//   pinMode(PIN_DIR, OUTPUT);
-//   digitalWrite(PIN_STEP, LOW);   // idle low
 
-//   pinMode(PIN_ALM, INPUT_PULLUP); // ALM is from driver -> Arduino input
-// }
+const long PULSES_PER_MOTOR_REV = 6400;   // match SW1-4
+const long PULSES_PER_OUTPUT_REV = PULSES_PER_MOTOR_REV * GEAR_RATIO;
 
-// void loop() {
-//   if (digitalRead(PIN_ALM) == LOW) {
-//     Serial.println("ALARM ACTIVE (ALM low). Fix driver alarm first.");
-//     delay(500);
-//     return;
-//   }
+const float MOVE_DEG = 30.0;              // output degrees
 
-//   Serial.println("Forward...");
-//   digitalWrite(PIN_DIR, HIGH);
-//   stepN(2000);
-//   delay(1000);
+AccelStepper motor(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
 
-//   Serial.println("Reverse...");
-//   digitalWrite(PIN_DIR, LOW);
-//   stepN(2000);
-//   delay(1500);
-// }
+long degToStepsOutput(float deg) {
+  return lround((deg / 360.0f) * (float)PULSES_PER_OUTPUT_REV);
+}
 
-// Wiring:
-// PUL- + DIR- + COM- -> Arduino GND
-// PUL+ -> D10
-// DIR+ -> D11
-// ENA+ -> 5V, ENA- -> GND
-
-const int PIN_STEP = 10;   // PUL+
-const int PIN_DIR  = 11;   // DIR+
-const int PIN_ALM  = 13;   // ALM output from driver (optional)
-
-const unsigned int PULSE_US = 1200;
-const unsigned int GAP_US   = 1200;
-
-void stepN(long n) {
-  for (long i = 0; i < n; i++) {
-    digitalWrite(PIN_STEP, HIGH);
-    delayMicroseconds(PULSE_US);
-    digitalWrite(PIN_STEP, LOW);
-    delayMicroseconds(GAP_US);
+void moveToAndWait(long targetSteps) {
+  motor.moveTo(targetSteps);
+  while (motor.distanceToGo() != 0) {
+    motor.run();
   }
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(300);
-  Serial.println("CL57T base joint test");
+  pinMode(ALM_PIN, INPUT_PULLUP);
 
-  pinMode(PIN_STEP, OUTPUT);
-  pinMode(PIN_DIR, OUTPUT);
-  digitalWrite(PIN_STEP, LOW);
+  // These are motor pulse rates (not output rates).
+  // Start conservative because 100:1 can make things feel "stalled" if too fast.
+  // motor.setMaxSpeed(450);      // steps/sec
+  // motor.setAcceleration(225);   // steps/sec^2
+  motor.setMaxSpeed(10000);
+  motor.setAcceleration(5000);
 
-  pinMode(PIN_ALM, INPUT_PULLUP);
-
-  Serial.println("Waiting for base to settle...");
-  delay(3000);
+  motor.setCurrentPosition(0);
 }
 
 void loop() {
-  if (digitalRead(PIN_ALM) == LOW) {
-    Serial.println("ALARM ACTIVE (ALM low)");
+  if (digitalRead(ALM_PIN) == LOW) {
+    Serial.println("ALARM ACTIVE");
+    Serial.println(digitalRead(ALM_PIN));
     delay(500);
     return;
   }
 
-  Serial.println("Forward BIG...");
-  digitalWrite(PIN_DIR, HIGH);
-  stepN(20000);
-  delay(1500);
+  long d = degToStepsOutput(MOVE_DEG);
 
-  Serial.println("Reverse BIG...");
-  digitalWrite(PIN_DIR, LOW);
-  stepN(20000);
-  delay(2500);
+  moveToAndWait(-d);
+  delay(500);
+
+  moveToAndWait(0);
+  delay(500);
+
+  moveToAndWait(+d);
+  delay(500);
+
+  moveToAndWait(0);
+  delay(1000);
 }

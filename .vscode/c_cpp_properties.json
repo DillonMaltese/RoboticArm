@@ -1,0 +1,23 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/Users/dillonmaltese/.platformio/packages/framework-arduino-avr/cores/arduino",
+                "/Users/dillonmaltese/.platformio/packages/framework-arduino-avr/variants/mega",
+                "/Users/dillonmaltese/.platformio/packages/toolchain-atmelavr/avr/include",
+                "/Users/dillonmaltese/Documents/Arduino/libraries/**"
+            ],
+            "defines": [
+                "ARDUINO=100",
+                "__AVR_ATmega2560__"
+            ],
+            "compilerPath": "/Users/dillonmaltese/.platformio/packages/toolchain-atmelavr/bin/avr-gcc",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-gcc-x86"
+        }
+    ],
+    "version": 4
+}
