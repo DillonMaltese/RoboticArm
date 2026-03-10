@@ -105,6 +105,20 @@ void moveToMappedPos(float baseDeg, float shoulderDeg, float elbowDeg, float wri
   runAllUntilDone();
 }
 
+void moveByDeg(float baseDeg, float shoulderDeg, float elbowDeg, float wristDeg) {
+  long baseSteps     = degToSteps(SIGN_B * baseDeg,     PULSES_PER_OUTPUT_REV_B);
+  long shoulderSteps = degToSteps(SIGN_S * shoulderDeg, PULSES_PER_OUTPUT_REV_S);
+  long elbowSteps    = degToSteps(SIGN_E * elbowDeg,    PULSES_PER_OUTPUT_REV_E);
+  long wristSteps    = degToSteps(SIGN_W * wristDeg,    PULSES_PER_OUTPUT_REV_W);
+
+  base.move(baseSteps);
+  shoulder.move(shoulderSteps);
+  elbow.move(elbowSteps);
+  wrist.move(wristSteps);
+
+  runAllUntilDone();
+}
+
 void homeJoint(AccelStepper &motor, int homePin, long pulsesPerOutRev, float homingSpeed) {
   motor.setMaxSpeed(homingSpeed);
   motor.setAcceleration(homingSpeed / 2.0f);
@@ -132,10 +146,10 @@ void setup() {
   pinMode(ALM_PIN_E, INPUT_PULLUP);
   pinMode(ALM_PIN_W, INPUT_PULLUP);
 
-  pinMode(HOME_PIN_B, INPUT_PULLUP);
-  pinMode(HOME_PIN_S, INPUT_PULLUP);
-  pinMode(HOME_PIN_E, INPUT_PULLUP);
-  pinMode(HOME_PIN_W, INPUT_PULLUP);
+  // pinMode(HOME_PIN_B, INPUT_PULLUP);
+  // pinMode(HOME_PIN_S, INPUT_PULLUP);
+  // pinMode(HOME_PIN_E, INPUT_PULLUP);
+  // pinMode(HOME_PIN_W, INPUT_PULLUP);
 
   // Apply per-joint speed/accel
   base.setMaxSpeed(MAX_B);
@@ -190,7 +204,9 @@ void loop() {
       token = strtok(NULL, ",");
       float wrist_deg   = atof(token);
 
-      moveToMappedPos(base_deg, shoulder_deg, elbow_deg, wrist_deg);
+      // moveToMappedPos(base_deg, shoulder_deg, elbow_deg, wrist_deg);
+      moveByDeg(base_deg, shoulder_deg, elbow_deg, wrist_deg);
+      Serial.println("OK");
     }
   }
 }
