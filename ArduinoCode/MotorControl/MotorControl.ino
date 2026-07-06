@@ -1,16 +1,16 @@
 #include <AccelStepper.h>
 
 // BASE
-// const int STEP_PIN = 24;   // PUL+
-// const int DIR_PIN  = 25;   // DIR+
-// const int ALM_PIN  = 32;   // ALM input (optional)
-// const long GEAR_RATIO = 5; // base reduction
+const int STEP_PIN = 24;   // PUL+
+const int DIR_PIN  = 25;   // DIR+
+const int ALM_PIN  = 32;   // ALM input (optional)
+const long GEAR_RATIO = 5; // base reduction
 
 // SHOULDER
-const int STEP_PIN = 30;     // PUL+  (shoulder from our Mega map)
-const int DIR_PIN  = 31;     // DIR+
-const int ALM_PIN  = 36;     // ALM input (optional)
-const long GEAR_RATIO = 100; // shoulder reduction
+// const int STEP_PIN = 30;     // PUL+  (shoulder from our Mega map)
+// const int DIR_PIN  = 31;     // DIR+
+// const int ALM_PIN  = 36;     // ALM input (optional)
+// const long GEAR_RATIO = 100; // shoulder reduction
 
 // const int STEP_PIN = 22;
 // const int DIR_PIN  = 23;
@@ -65,15 +65,15 @@ void loop() {
 
   long d = degToStepsOutput(MOVE_DEG);
 
-  moveToAndWait(-d);
+  moveToAndWait(+d);
   delay(500);
 
-  moveToAndWait(0);
+  //moveToAndWait(0);
   delay(500);
 
   moveToAndWait(+d);
   delay(500);
 
-  moveToAndWait(0);
+  //moveToAndWait(0);
   delay(1000);
 }
