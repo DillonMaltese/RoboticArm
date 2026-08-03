@@ -1,0 +1,221 @@
+<?xml version="1.0"?>
+
+<robot name="jarvis">
+
+  <!-- ====================================================== -->
+  <!-- BASE                                                   -->
+  <!-- ====================================================== -->
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0.0381" rpy="0 0 0"/>
+      <geometry>
+        <!-- 3 inches tall, 4-inch radius -->
+        <cylinder length="0.0762" radius="0.1016"/>
+      </geometry>
+      <material name="base_white">
+        <color rgba="0.9 0.9 0.9 1"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0.0381" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.0762" radius="0.1016"/>
+      </geometry>
+    </collision>
+  </link>
+
+
+  <!-- ====================================================== -->
+  <!-- ROTATING BASE PLATFORM                                 -->
+  <!-- ====================================================== -->
+
+  <link name="base_rot">
+    <visual>
+      <origin xyz="0 0 0.0127" rpy="0 0 0"/>
+      <geometry>
+        <!-- 1-inch-thick rotating platform -->
+        <box size="0.1 0.1 0.0254"/>
+      </geometry>
+      <material name="platform_white">
+        <color rgba="0.85 0.85 0.85 1"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0.0127" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.1 0.1 0.0254"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="base_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="base_rot"/>
+
+    <!-- Top of the 3-inch-tall base -->
+    <origin xyz="0 0 0.0762" rpy="0 0 0"/>
+
+    <!-- Vertical base rotation -->
+    <axis xyz="0 0 1"/>
+
+    <limit
+      lower="-3.14159265"
+      upper="3.14159265"
+      effort="100"
+      velocity="0.5"/>
+  </joint>
+
+
+  <!-- ====================================================== -->
+  <!-- FIRST ARM SECTION                                      -->
+  <!--                                                        -->
+  <!-- L1 = 28.25 inches = 0.71755 meters                     -->
+  <!-- Zero position: vertical upward                         -->
+  <!-- ====================================================== -->
+
+  <link name="arm1">
+    <visual>
+      <!-- Half of L1 = 0.358775 m -->
+      <origin xyz="0 0 0.358775" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.71755" radius="0.02"/>
+      </geometry>
+      <material name="arm_white">
+        <color rgba="0.95 0.95 0.95 1"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0.358775" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.71755" radius="0.02"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="shoulder_joint" type="revolute">
+    <parent link="base_rot"/>
+    <child link="arm1"/>
+
+    <!-- Shoulder is 1 inch above the base-joint frame -->
+    <origin xyz="0 0 0.0254" rpy="0 0 0"/>
+
+    <!-- Shoulder rotates in the radial/vertical plane -->
+    <axis xyz="1 0 0"/>
+
+    <limit
+      lower="-1.57079633"
+      upper="1.57079633"
+      effort="1000"
+      velocity="0.25"/>
+  </joint>
+
+
+  <!-- ====================================================== -->
+  <!-- SECOND ARM SECTION                                     -->
+  <!--                                                        -->
+  <!-- L2 = 16 inches = 0.4064 meters                         -->
+  <!-- Zero position: horizontal along +Y                     -->
+  <!-- ====================================================== -->
+
+  <link name="arm2">
+    <visual>
+      <!-- Half of L2 = 0.2032 m -->
+      <!-- Rotate cylinder from local Z onto local +Y -->
+      <origin xyz="0 0.2032 0" rpy="-1.57079633 0 0"/>
+      <geometry>
+        <cylinder length="0.4064" radius="0.02"/>
+      </geometry>
+      <material name="arm2_white">
+        <color rgba="0.95 0.95 0.95 1"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0.2032 0" rpy="-1.57079633 0 0"/>
+      <geometry>
+        <cylinder length="0.4064" radius="0.02"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="elbow_joint" type="revolute">
+    <parent link="arm1"/>
+    <child link="arm2"/>
+
+    <!-- Elbow is located at the end of L1 -->
+    <origin xyz="0 0 0.71755" rpy="0 0 0"/>
+
+    <axis xyz="1 0 0"/>
+
+    <limit
+      lower="-2.8"
+      upper="2.8"
+      effort="500"
+      velocity="0.35"/>
+  </joint>
+
+
+  <!-- ====================================================== -->
+  <!-- WRIST / TOOL SECTION                                   -->
+  <!--                                                        -->
+  <!-- L3 = 10.75 inches = 0.27305 meters                     -->
+  <!-- Zero position: vertical downward                       -->
+  <!-- ====================================================== -->
+
+  <link name="wrist">
+    <visual>
+      <!-- Half of L3 = 0.136525 m -->
+      <!-- Negative Z makes the section extend downward -->
+      <origin xyz="0 0 -0.136525" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.27305" radius="0.015"/>
+      </geometry>
+      <material name="wrist_white">
+        <color rgba="0.95 0.95 0.95 1"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 -0.136525" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.27305" radius="0.015"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="wrist_joint" type="revolute">
+    <parent link="arm2"/>
+    <child link="wrist"/>
+
+    <!-- Wrist is located at the end of L2 -->
+    <origin xyz="0 0.4064 0" rpy="0 0 0"/>
+
+    <axis xyz="1 0 0"/>
+
+    <limit
+      lower="-3.14159265"
+      upper="3.14159265"
+      effort="200"
+      velocity="0.5"/>
+  </joint>
+
+
+  <!-- ====================================================== -->
+  <!-- END-EFFECTOR / TOOL-TIP REFERENCE                      -->
+  <!-- ====================================================== -->
+
+  <link name="tool_tip"/>
+
+  <joint name="tool_tip_joint" type="fixed">
+    <parent link="wrist"/>
+    <child link="tool_tip"/>
+
+    <!-- Tool tip is at the bottom end of L3 -->
+    <origin xyz="0 0 -0.27305" rpy="0 0 0"/>
+  </joint>
+
+</robot>
