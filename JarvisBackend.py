@@ -1,67 +1,109 @@
-import os, time, asyncio, tempfile
-import speech_recognition as sr
-from playsound import playsound
-import edge_tts
+import whisper
+import sounddevice as sd
+import numpy as np
 
-ACTIVE_WINDOW_SECONDS = 10
-PHRASE_TIME_LIMIT = 5
-VOICE  = "en-GB-ThomasNeural"
-RATE   = "-10%"
-PITCH  = "-10Hz"
-VOLUME = "+0%"
+model = whisper.load_model("medium", device="cuda")
 
-# Turning text into speech + saving it to file
-async def _edge_tts_to_file(text: str, path: str):
-    communicate = edge_tts.Communicate(text, VOICE, rate=RATE, volume=VOLUME, pitch=PITCH)
-    await communicate.save(path)
 
-# Running the text to speech loop
-def _run_tts_sync(text: str, path: str):
-    loop = asyncio.new_event_loop()
-    try:
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(_edge_tts_to_file(text, path))
-    finally:
-        loop.close()
-        asyncio.set_event_loop(None)
+SAMPLE_RATE = 16000
+DURATION    = 3
+WAKE_DURATION = 2
 
-def speak(text: str):
-    out = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-            out = f.name
-        _run_tts_sync(text, out)
+def shortRecord():
+    audio = sd.rec(
+        int(WAKE_DURATION * SAMPLE_RATE),
+        samplerate=SAMPLE_RATE,
+        channels=1,
+        dtype="float32"
+    )
+    sd.wait()
+    return audio.flatten()
 
-        if not os.path.exists(out) or os.path.getsize(out) < 512:
-            raise RuntimeError("TTS output file missing/empty — check internet or voice name.")
+def record():
+    audio = sd.rec(
+        int(DURATION * SAMPLE_RATE),
+        samplerate=SAMPLE_RATE,
+        channels=1,
+        dtype="float32"
+    )
+    sd.wait()
+    #Turning 2D array that sounddevice returns (shape: 64000 x 1) into a 1D array (shape: 64000) for whisper
+    return audio.flatten()
 
-        playsound(out)
-    except Exception as e:
-        print(f"[TTS error] {type(e).__name__}: {e}")
-    finally:
-        if out:
-            try: os.remove(out)
-            except: pass
+#Making the most common words that whisper will hear known
+WHISPER_PROMPT = (
+    "hey jarvis move forward backward left right up down "
+    "inch inches stop home rest"
+)
 
-# Get user input function
-def get_input(rec, source):
-    end = time.time() + ACTIVE_WINDOW_SECONDS
-    print(f"Active for {ACTIVE_WINDOW_SECONDS}s. Speak your commands.")
-    while time.time() < end:
-        text = transcribe_once(rec, source, limit=PHRASE_TIME_LIMIT)
-        if not text: continue
-        print(f"[command] {text}")
-        if any(p in text for p in ("never mind","cancel","thanks jarvis","go to sleep")):
-            speak("okay"); return None
-        return text
+def transcribe(audio: np.ndarray) -> str:
+    result = model.transcribe(
+        audio,
+        language="en",
+        fp16=True,
+        #Telling whisper to expect the words from the variable above
+        initial_prompt=WHISPER_PROMPT,
+        #Making no randomness
+        temperature=0.0,
+        condition_on_previous_text=False
+    )
+    #Removes wbitespace + converts to lowercase
+    return result["text"].strip().lower()
+
+WORD_TO_NUM = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "half": 0.5, "a": 1, "an": 1
+}
+#Making sure there are numbers and no words
+def extract_number(words: list[str]) -> float | None:
+    for word in words:
+        if word in WORD_TO_NUM:
+            return float(WORD_TO_NUM[word])
+        try:
+            return float(word)
+        except ValueError:
+            continue
     return None
-    
-# Speech recognition function
-def transcribe_once(rec, src, limit=None):
-    try:
-        audio = rec.listen(src, timeout=None, phrase_time_limit=limit)
-        return rec.recognize_google(audio).strip().lower()
-    except sr.UnknownValueError:
+
+#Mapping everything to unit vector
+DIRECTION_MAP = {
+    "forward":  ( 1,  0,  0),   # dx_radial, d_base_angle, dz
+    "backward": (-1,  0,  0),
+    "back":     (-1,  0,  0),
+    "left":     ( 0, -1,  0),   # negative base rotation = CCW
+    "right":    ( 0,  1,  0),   # positive base rotation = CW
+    "up":       ( 0,  0,  1),
+    "down":     ( 0,  0, -1),
+}
+
+PRESETS = ["home", "rest", "stop"]
+
+def parse(text: str) -> dict | None:
+    words = text.strip().lower().split()
+
+    # ── Preset / stop ──
+    for preset in PRESETS:
+        if preset in words:
+            return {"type": "preset", "name": preset}
+
+    # ── Directional move ──
+    direction = None
+    for word in words:
+        if word in DIRECTION_MAP:
+            direction = word
+            break
+
+    if direction is None:
         return None
-    except sr.RequestError as e:
-        print(f"[speech] API error: {e}"); return None
+
+    amount = extract_number(words)
+    if amount is None:
+        return None
+
+    return {
+        "type":      "move",
+        "direction": direction,
+        "amount":    amount,
+        "vector":    tuple(v * amount for v in DIRECTION_MAP[direction])
+    }

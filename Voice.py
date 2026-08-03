@@ -1,55 +1,74 @@
-import os, time, threading, re
-import speech_recognition as sr
-from playsound import playsound
-from backend import speak, transcribe_once, get_input
+from pathlib import Path
+from threading import Lock
 
-WAKE_WORD = "jarvis"
+import sounddevice as sd
+from piper import PiperVoice
 
-# Where we determine what to do given a command
-def handle_robot_command(text: str):
-    if "arm right" in text:
-        speak("Moving arm right")
-        
-    elif "arm left" in text:
-        speak("Moving arm left")
-        
-    elif "arm up" in text:
-        speak("Moving arm up")
-        
-    elif "arm down" in text:
-        speak("Moving arm down")
 
-    else:
-        speak("not sure what you're trying to say")
+# This assumes:
+#
+# RoboticArm/
+# ├── Voice.py
+# └── voices/
+#     ├── en_GB-alan-medium.onnx
+#     └── en_GB-alan-medium.onnx.json
 
-def schedule_reminder(task: str, when_dt: datetime, speak):
-    delay = max((when_dt - datetime.now(TZ)).total_seconds(), 0)
-    def _ding():
-        speak(f"Reminder: {task}")
-    timer = threading.Timer(delay, _ding)
-    timer.daemon = True
-    timer.start()
-    return timer
+VOICE_MODEL = (
+    Path(__file__).resolve().parent
+    / "voices"
+    / "en_GB-alan-medium.onnx"
+)
 
-if __name__ == "__main__":
-    rec = sr.Recognizer()
-    rec.dynamic_energy_threshold = True
-    rec.pause_threshold = 0.8
+_speech_lock = Lock()
 
-    with sr.Microphone() as source:
-        print("Calibrating mic…"); rec.adjust_for_ambient_noise(source, duration=1.0)
-        # speak("Jarvis Activated")
-        speak("Good evening. All systems are nominal.")
-        print("Ready. Say 'Jarvis' to wake me.")
+print("[voice] Loading Piper voice...")
 
-        while True:
-            print("\nListening for wake word…")
-            heard = transcribe_once(rec, source, limit=3)
-            if not heard: continue
-            print(f"[heard] {heard}")
-            if WAKE_WORD in heard:
-                print("Wake word detected."); speak("Yes?")
-                command = get_input(rec, source)
-                if command:
-                    handle_robot_command(command)
-                print("Back to wake mode.")
+if not VOICE_MODEL.exists():
+    raise FileNotFoundError(
+        f"Piper model was not found:\n{VOICE_MODEL}\n\n"
+        "Make sure the .onnx and .onnx.json files are inside the voices folder."
+    )
+
+# Loaded once when Voice.py is first imported.
+_voice = PiperVoice.load(str(VOICE_MODEL))
+
+print("[voice] Piper voice ready.")
+
+
+def speak(text: str) -> None:
+    """
+    Generate and play speech.
+
+    Piper remains loaded in memory, so later responses begin much faster.
+    This function blocks until the sentence finishes playing.
+    """
+
+    text = str(text).strip()
+
+    if not text:
+        return
+
+    with _speech_lock:
+        output_stream = None
+
+        try:
+            # Piper returns audio in chunks, allowing playback to begin
+            # before the entire sentence has been generated.
+            for chunk in _voice.synthesize(text):
+                if output_stream is None:
+                    output_stream = sd.RawOutputStream(
+                        samplerate=chunk.sample_rate,
+                        channels=chunk.sample_channels,
+                        dtype="int16",
+                    )
+                    output_stream.start()
+
+                output_stream.write(chunk.audio_int16_bytes)
+
+        except Exception as error:
+            print(f"[voice] Speech failed: {error}")
+
+        finally:
+            if output_stream is not None:
+                output_stream.stop()
+                output_stream.close()

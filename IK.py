@@ -96,7 +96,7 @@ def solve_ik(target_inches, starting_angles=None):
 
 # Move straight outward in the direction the base is currently facing.
 # Use a negative distance to move backward.
-def move_forward(distance_inches, current_solution):
+def calculate_forward_move(distance_inches, current_solution):
 
     # Find the current tool-tip position.
     current_position = forward_position_inches(current_solution)

@@ -11,7 +11,7 @@ from config import (
 from IK import (
     angles_by_name,
     forward_position_inches,
-    move_forward,
+    calculate_forward_move,
     solve_ik,
 )
 
@@ -129,7 +129,7 @@ class RobotController:
         The base joint remains locked.
         """
 
-        target, solution, error = move_forward(
+        target, solution, error = calculate_forward_move(
             distance_inches,
             self.current_solution,
         )
@@ -197,6 +197,58 @@ class RobotController:
             solution,
             error,
         )
+
+    def move_right(self, distance_inches):
+        """
+        Move sideways to the robot's right while keeping Z unchanged.
+
+        The base must rotate during a sideways movement.
+        """
+
+        x = self.current_position[0]
+        y = self.current_position[1]
+        z = self.current_position[2]
+
+        radius = math.hypot(x, y)
+
+        if radius < 0.000001:
+            raise ValueError(
+                "Cannot determine the sideways direction while "
+                "the tool is directly above the base."
+            )
+
+        # Forward direction from the base to the tool.
+        forward_x = x / radius
+        forward_y = y / radius
+
+        # Right is 90 degrees clockwise from forward.
+        right_x = forward_y
+        right_y = -forward_x
+
+        target = [
+            x + distance_inches * right_x,
+            y + distance_inches * right_y,
+            z,
+        ]
+
+        solution, error = solve_ik(
+            target,
+            self.current_solution,
+        )
+
+        self.accept_movement(
+            target,
+            solution,
+            error,
+        )
+
+
+    def move_left(self, distance_inches):
+        """
+        Move sideways to the robot's left.
+        """
+
+        self.move_right(-distance_inches)
 
 
     def get_position(self):
