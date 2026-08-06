@@ -18,7 +18,7 @@ L1_IN = 28.25
 L2_IN = 16.00
 L3_IN = 10.75
 
-# Joint names must exactly match the URDF
+# Joint names from the URDF
 JOINT_NAMES = (
     "base_joint",
     "shoulder_joint",
@@ -26,7 +26,7 @@ JOINT_NAMES = (
     "wrist_joint",
 )
 
-# IKPy includes the fixed base and fixed tool-tip joint
+# Defining fixed vs moving
 ACTIVE_LINKS_MASK = (
     False,  # Base link
     True,   # base_joint
@@ -36,7 +36,7 @@ ACTIVE_LINKS_MASK = (
     False,  # tool_tip_joint
 )
 
-# URDF home-position tool coordinates
+# URDF home coordinates
 HOME_TARGET_IN = (
     0.0,
     L2_IN,

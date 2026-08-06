@@ -140,3 +140,25 @@ class ArduinoConnection:
         )
 
         self.wait_until_done()
+
+    def reset_and_wait(self):
+        """
+        Send RESET to the Arduino and wait until it reports DONE.
+        """
+
+        if self.serial is None or not self.serial.is_open:
+            raise RuntimeError(
+                "Arduino is not connected."
+            )
+
+        print("Sending: RESET")
+
+        self.serial.reset_input_buffer()
+
+        self.serial.write(
+            b"RESET\n"
+        )
+
+        self.serial.flush()
+
+        self.wait_until_done()

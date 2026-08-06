@@ -1,149 +1,394 @@
+import re
 import time
-import serial
-from JarvisBackend import record, transcribe, parse, shortRecord
-import math
-from IK import *
+
+from JarvisBackend import (
+    parse,
+    record,
+    shortRecord,
+    transcribe,
+)
+
+from robot_control import RobotController
 from Voice import speak
 
+
+# -------------------- Voice configuration --------------------
+
 WAKE_WORD = "jarvis"
-SERIAL_PORT = "COM4"
-BAUD = 115200
-ser = None
-
-baseTheta     = math.radians(0)
-shoulderTheta = math.radians(30.95)
-elbowTheta    = math.radians(90.0)
-wristTheta    = math.radians(-210.95)
 
 
-L1, L2, L3 = 28.25, 16, 10.75  # example link lengths in inches
-Z_OFFSET = 0  # base height of shoulder from ground in inches
+def words_in(
+    text: str,
+) -> set[str]:
+    """
+    Return the lowercase words contained in transcribed text.
 
-def open_serial():
-    global ser
-    if ser and ser.is_open:
-        return ser
-    try:
-        # longer timeout to allow motion before reply
-        ser = serial.Serial(SERIAL_PORT, BAUD, timeout=2.0)
-        time.sleep(2.0)  # let Arduino reset
-        ser.reset_input_buffer()
-        ser.reset_output_buffer()
-        print(f"[serial] Connected to {SERIAL_PORT}")
-        return ser
-    except Exception as e:
-        print("[serial] Could not open serial port:", e)
-        return None
+    Punctuation is ignored, so these all work:
 
-def move(dx_radial, d_base_angle, dz):
-    global baseTheta, shoulderTheta, elbowTheta, wristTheta
+        Jarvis
+        Hey, Jarvis
+        Okay Jarvis
+    """
 
-    xCur, yCur, zCur = forward(baseTheta, shoulderTheta, elbowTheta, wristTheta, L1, L2, L3)
-
-    # Move in the direction the arm faces (negative X)
-    xTarg = xCur + dx_radial * math.cos(baseTheta)
-    yTarg = yCur + dx_radial * math.sin(baseTheta)
-    zTarg = zCur + dz
-
-    if d_base_angle != 0:
-        r = math.sqrt(xCur**2 + yCur**2)
-        newBase = baseTheta + d_base_angle
-        xTarg = r * math.cos(newBase)   # removed the negative
-        yTarg = r * math.sin(newBase)
-        zTarg = zCur
-
-    # Flip X before passing to inverse since it expects positive X targets
-    newBase, newShoulder, newElbow, newWrist = inverse(xTarg, yTarg, zTarg, L1, L2, L3)
-
-    newBaseDeg     = math.degrees(newBase     - baseTheta)
-    newShoulderDeg = math.degrees(newShoulder - shoulderTheta)
-    newElbowDeg    = math.degrees(newElbow    - elbowTheta)
-    newWristDeg    = math.degrees(newWrist    - wristTheta)
-
-    baseTheta     = newBase
-    shoulderTheta = newShoulder
-    elbowTheta    = newElbow
-    wristTheta    = newWrist
-
-    command = f"|{newBaseDeg:.2f}|{-newShoulderDeg:.2f}|{-newElbowDeg:.2f}|{newWristDeg:.2f}|\n"
-    if ser and ser.is_open:
-        ser.write(command.encode())
-    else:
-        print(f"[serial] Would send: {command.strip()}")
-
-    return newBaseDeg, newShoulderDeg, newElbowDeg, newWristDeg
+    return set(
+        re.findall(
+            r"[a-z]+",
+            text.lower(),
+        )
+    )
 
 
-def wakeListen():
+def format_amount(
+    amount: float,
+) -> str:
+    """
+    Format a number naturally for speech.
+
+    Examples:
+
+        3.0 becomes "3"
+        3.2 remains "3.2"
+    """
+
+    amount = float(amount)
+
+    if amount.is_integer():
+        return str(int(amount))
+
+    return str(amount)
+
+
+# -------------------- Wake-word handling --------------------
+
+def wait_for_wake_word():
+    """
+    Listen repeatedly until the word Jarvis is detected.
+    """
+
+    print(
+        "\nSay 'Hey Jarvis' to activate."
+    )
+
     while True:
         audio = shortRecord()
-        text  = transcribe(audio)
-        print(f"[wake] Heard: '{text}'")
-        if WAKE_WORD in text:
-            speak("Yes?")
+        text = transcribe(audio)
+
+        print(
+            f"[wake] Heard: '{text}'"
+        )
+
+        if WAKE_WORD in words_in(text):
             return
-    
+
+
+def listen_for_command() -> str:
+    """
+    Say yes, then record and transcribe one command.
+    """
+
+    speak("Yes?")
+
+    # Prevent the microphone from capturing the end of
+    # Jarvis's spoken response.
+    time.sleep(0.35)
+
+    print(
+        "Listening for command..."
+    )
+
+    audio = record()
+    text = transcribe(audio)
+
+    print(
+        f"[command] Heard: '{text}'"
+    )
+
+    return text
+
+
+# -------------------- Command execution --------------------
+
+def execute_move_command(
+    robot: RobotController,
+    direction: str,
+    amount: float,
+):
+    """
+    Execute one directional movement.
+    """
+
+    amount = float(amount)
+
+    if amount <= 0:
+        speak(
+            "The movement distance must be greater than zero."
+        )
+        return
+
+    movement_functions = {
+        "forward": robot.move_forward,
+        "backward": robot.move_backward,
+        "left": robot.move_left,
+        "right": robot.move_right,
+        "up": robot.move_up,
+        "down": robot.move_down,
+    }
+
+    movement_function = movement_functions.get(
+        direction
+    )
+
+    if movement_function is None:
+        print(
+            f"Unknown direction: {direction}"
+        )
+
+        speak(
+            "I do not recognize that direction."
+        )
+
+        return
+
+    spoken_amount = format_amount(
+        amount
+    )
+
+    print(
+        f"Moving {spoken_amount} inches {direction}."
+    )
+
+    speak(
+        f"Moving {spoken_amount} inches {direction}."
+    )
+
+    movement_function(
+        amount
+    )
+
+    speak("Done.")
+
+
+def execute_command(
+    robot: RobotController,
+    text: str,
+) -> bool:
+    """
+    Parse and execute one spoken command.
+
+    Returns True to keep listening.
+    Returns False to close voice control.
+    """
+
+    text = text.strip().lower()
+
+    if not text:
+        print("No command was heard.")
+        speak("I did not hear a command.")
+        return True
+
+    command_words = words_in(text)
+
+    # Exit voice control.
+    if (
+        "exit" in command_words
+        or "quit" in command_words
+        or "shutdown" in command_words
+    ):
+        print("Exiting voice control.")
+        speak("Shutting down voice control.")
+        return False
+
+    command = parse(text)
+
+    print(f"[command] Parsed: {command}")
+
+    if command is None:
+        speak("I did not understand that command.")
+        return True
+
+    command_type = command.get("type")
+
+
+    # -------------------- Wrist-only movement --------------------
+
+    if command_type == "wrist_rotate":
+        degrees = float(
+            command["degrees"]
+        )
+
+        direction = (
+            "clockwise"
+            if degrees > 0
+            else "counterclockwise"
+        )
+
+        spoken_amount = format_amount(
+            abs(degrees)
+        )
+
+        print(
+            f"Calling robot.rotate_wrist({degrees})"
+        )
+
+        speak(
+            f"Rotating wrist {spoken_amount} "
+            f"degrees {direction}."
+        )
+
+        robot.rotate_wrist(
+            degrees
+        )
+
+        speak("Done.")
+
+        return True
+
+
+    # -------------------- XYZ movement --------------------
+
+    if command_type == "move":
+        print(
+            "Calling normal movement:",
+            command["direction"],
+            command["amount"],
+        )
+
+        execute_move_command(
+            robot=robot,
+            direction=command["direction"],
+            amount=command["amount"],
+        )
+
+        return True
+
+
+    # -------------------- Reset --------------------
+
+    if command_type == "preset":
+        preset_name = command.get("name")
+
+        if preset_name == "reset":
+            print("Calling robot.reset_to_start()")
+
+            speak("Resetting.")
+
+            robot.reset_to_start()
+
+            speak("Reset complete.")
+
+            return True
+
+        if preset_name == "stop":
+            speak(
+                "No movement command is currently active."
+            )
+
+            return True
+
+
+    print(
+        f"Unknown command type: {command_type}"
+    )
+
+    speak(
+        "I did not understand that command."
+    )
+
+    return True
+
+
+# -------------------- Main program --------------------
 
 def run():
-    open_serial()
-    print("Say Jarvis to activate...")
-    speak("Say Jarvis to activate...")
+    """
+    Connect to the robot and start voice control.
+    """
 
-    while True:
+    robot = RobotController()
+    connected = False
 
-        wakeListen()
-        print("Listening for command")
+    try:
+        robot.connect()
+        connected = True
 
-        audio = record()
-        text  = transcribe(audio)
+        print("Robot connected.")
+        print()
+        print(
+            "Say 'Hey Jarvis', wait for 'Yes?', then say:"
+        )
+        print("  Move 3 inches forward")
+        print("  Move 3.2 inches right")
+        print("  Rotate wrist 45 degrees clockwise")
+        print("  Rotate wrist 20 degrees counterclockwise")
+        print("  Reset")
+        print("  Exit")
 
-        if not text:
-            continue
+        speak("Voice control ready.")
 
-        print(f"Heard: '{text}'")
-        textCommand = parse(text)
+        keep_running = True
 
-        if textCommand is None:
-            print("Could not parse command, listening again...")
-            continue
+        while keep_running:
+            wait_for_wake_word()
 
-        print(f"Parsed: {textCommand}")
+            command_text = listen_for_command()
 
-        if textCommand["type"] == "move":
-            direction = textCommand["direction"]
-            amount    = textCommand["amount"]
+            print(
+                f"Passing command to execute_command: "
+                f"'{command_text}'"
+            )
 
-            if direction in ("forward", "backward", "back"):
-                dx_radial    = amount if direction == "forward" else -amount
-                d_base_angle = 0
-                dz           = 0
+            try:
+                keep_running = execute_command(
+                    robot,
+                    command_text,
+                )
 
-            elif direction in ("left", "right"):
-                dx_radial    = 0
-                d_base_angle = math.radians(amount) if direction == "right" else -math.radians(amount)
-                dz           = 0
+            except ValueError as error:
+                print(
+                    f"Invalid movement: {error}"
+                )
 
-            elif direction == "up":
-                dx_radial    = 0
-                d_base_angle = 0
-                dz           = amount
+                speak(
+                    "That movement is not valid."
+                )
 
-            elif direction == "down":
-                dx_radial    = 0
-                d_base_angle = 0
-                dz           = -amount
+            except TimeoutError as error:
+                print(
+                    f"Arduino timeout: {error}"
+                )
 
-            else:
-                print("Unknown direction")
-                continue
+                speak(
+                    "The robot did not finish responding."
+                )
 
-            speak("Moving " + str(amount) + " " + direction)
-            angles = move(dx_radial, d_base_angle, dz)
-            print(f"Sent: base={angles[0]:.2f} shoulder={angles[1]:.2f} elbow={angles[2]:.2f} wrist={angles[3]:.2f}")
+            except RuntimeError as error:
+                print(
+                    f"Robot error: {error}"
+                )
 
-        elif textCommand["type"] == "preset":
-            speak(f"Moving to {textCommand['name']} position.")
-            print(f"Preset '{textCommand['name']}' not yet implemented")
+                speak(
+                    "I could not complete that command."
+                )
+
+            except Exception as error:
+                print(
+                    f"Unexpected command error: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+                speak(
+                    "An unexpected error occurred."
+                )
+
+    except KeyboardInterrupt:
+        print(
+            "\nVoice control stopped."
+        )
+
+    finally:
+        if connected:
+            robot.disconnect()
+
 
 if __name__ == "__main__":
     run()

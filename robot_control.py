@@ -10,8 +10,8 @@ from config import (
 
 from IK import (
     angles_by_name,
-    forward_position_inches,
     calculate_forward_move,
+    forward_position_inches,
     solve_ik,
 )
 
@@ -19,25 +19,29 @@ from serial_control import ArduinoConnection
 
 
 class RobotController:
-
     def __init__(self):
         """
         Start the software model in the URDF home pose.
 
-        This assumes the physical robot is also placed and zeroed
-        in exactly that pose before movement begins.
+        The physical robot must also be placed in the home pose
+        when the Arduino starts.
         """
 
-        self.current_solution, error = solve_ik(
+        home_solution, error = solve_ik(
             HOME_TARGET_IN
         )
 
         if error > MAX_IK_ERROR_IN:
             raise RuntimeError(
-                f"Could not initialize the home pose. "
+                "Could not initialize the home pose. "
                 f"IK error: {error:.4f} inches"
             )
 
+        # Keep a permanent copy of the startup configuration.
+        self.home_solution = home_solution.copy()
+
+        # Current software state.
+        self.current_solution = self.home_solution.copy()
         self.current_position = list(HOME_TARGET_IN)
 
         self.arduino = ArduinoConnection(
@@ -51,6 +55,7 @@ class RobotController:
         """
         Connect to the Arduino.
         """
+
         self.arduino.connect()
 
 
@@ -58,38 +63,57 @@ class RobotController:
         """
         Disconnect from the Arduino.
         """
+
         self.arduino.disconnect()
 
 
     def send_solution(self, solution):
         """
-        Convert an IKPy solution from radians to degrees and
-        send the four absolute joint angles to the Arduino.
+        Send relative joint-angle changes to the Arduino.
+
+        The Arduino uses AccelStepper.move(), so it expects the
+        difference between the current and target joint angles.
         """
 
-        angles = angles_by_name(solution)
-
-        base_degrees = math.degrees(
-            angles["base_joint"]
+        current_angles = angles_by_name(
+            self.current_solution
         )
 
-        shoulder_degrees = math.degrees(
-            angles["shoulder_joint"]
+        target_angles = angles_by_name(
+            solution
         )
 
-        elbow_degrees = math.degrees(
-            angles["elbow_joint"]
+        base_change = math.degrees(
+            target_angles["base_joint"]
+            - current_angles["base_joint"]
         )
 
-        wrist_degrees = math.degrees(
-            angles["wrist_joint"]
+        shoulder_change = math.degrees(
+            target_angles["shoulder_joint"]
+            - current_angles["shoulder_joint"]
         )
+
+        elbow_change = math.degrees(
+            target_angles["elbow_joint"]
+            - current_angles["elbow_joint"]
+        )
+
+        wrist_change = math.degrees(
+            target_angles["wrist_joint"]
+            - current_angles["wrist_joint"]
+        )
+
+        print("Relative joint changes:")
+        print(f"  Base:     {base_change:.6f}")
+        print(f"  Shoulder: {shoulder_change:.6f}")
+        print(f"  Elbow:    {elbow_change:.6f}")
+        print(f"  Wrist:    {wrist_change:.6f}")
 
         self.arduino.move_and_wait(
-            base_degrees,
-            shoulder_degrees,
-            elbow_degrees,
-            wrist_degrees,
+            base_change,
+            shoulder_change,
+            elbow_change,
+            wrist_change,
         )
 
 
@@ -100,21 +124,25 @@ class RobotController:
         error,
     ):
         """
-        Check an IK solution, send it to the Arduino, and update
-        the stored software pose after movement finishes.
+        Validate an IK solution, move the physical robot, and then
+        update the stored software position.
         """
 
         if error > MAX_IK_ERROR_IN:
             raise ValueError(
-                f"Target could not be reached accurately. "
+                "Target could not be reached accurately. "
                 f"IK error: {error:.4f} inches"
             )
 
         self.send_solution(solution)
 
-        # Only update the stored state after the Arduino says DONE.
-        self.current_solution = solution
-        self.current_position = list(target)
+        # Update software only after the Arduino reports DONE.
+        self.current_solution = solution.copy()
+        self.current_position = [
+            float(target[0]),
+            float(target[1]),
+            float(target[2]),
+        ]
 
         print(
             "Movement completed. Current tool position:",
@@ -124,9 +152,7 @@ class RobotController:
 
     def move_forward(self, distance_inches):
         """
-        Move outward in the direction the base currently faces.
-
-        The base joint remains locked.
+        Move outward while keeping the base angle fixed.
         """
 
         target, solution, error = calculate_forward_move(
@@ -143,10 +169,12 @@ class RobotController:
 
     def move_backward(self, distance_inches):
         """
-        Move inward while keeping the base fixed.
+        Move inward while keeping the base angle fixed.
         """
 
-        self.move_forward(-distance_inches)
+        self.move_forward(
+            -distance_inches
+        )
 
 
     def move_up(self, distance_inches):
@@ -155,9 +183,9 @@ class RobotController:
         """
 
         target = [
-            self.current_position[0],
-            self.current_position[1],
-            self.current_position[2] + distance_inches,
+            float(self.current_position[0]),
+            float(self.current_position[1]),
+            float(self.current_position[2]) + distance_inches,
         ]
 
         solution, error = solve_ik(
@@ -177,63 +205,34 @@ class RobotController:
         Move vertically downward while preserving X and Y.
         """
 
-        self.move_up(-distance_inches)
-
-
-    def move_to(self, x, y, z):
-        """
-        Move the tool tip to an absolute URDF XYZ coordinate.
-        """
-
-        target = [x, y, z]
-
-        solution, error = solve_ik(
-            target,
-            self.current_solution,
+        self.move_up(
+            -distance_inches
         )
 
-        self.accept_movement(
-            target,
-            solution,
-            error,
-        )
 
     def move_right(self, distance_inches):
         """
-        Move sideways to the robot's right while keeping Z unchanged.
-
-        The base must rotate during a sideways movement.
+        Move toward global +X while keeping Y and Z unchanged.
         """
 
-        x = self.current_position[0]
-        y = self.current_position[1]
-        z = self.current_position[2]
-
-        radius = math.hypot(x, y)
-
-        if radius < 0.000001:
-            raise ValueError(
-                "Cannot determine the sideways direction while "
-                "the tool is directly above the base."
-            )
-
-        # Forward direction from the base to the tool.
-        forward_x = x / radius
-        forward_y = y / radius
-
-        # Right is 90 degrees clockwise from forward.
-        right_x = forward_y
-        right_y = -forward_x
-
         target = [
-            x + distance_inches * right_x,
-            y + distance_inches * right_y,
-            z,
+            float(self.current_position[0]) + distance_inches,
+            float(self.current_position[1]),
+            float(self.current_position[2]),
         ]
+
+        starting_guess = self.current_solution.copy()
+
+        # The arm's zero pose points along +Y.
+        # Give IKPy an estimate of the required base rotation.
+        starting_guess[1] = math.atan2(
+            -target[0],
+            target[1],
+        )
 
         solution, error = solve_ik(
             target,
-            self.current_solution,
+            starting_guess,
         )
 
         self.accept_movement(
@@ -245,10 +244,135 @@ class RobotController:
 
     def move_left(self, distance_inches):
         """
-        Move sideways to the robot's left.
+        Move toward global -X while keeping Y and Z unchanged.
         """
 
-        self.move_right(-distance_inches)
+        target = [
+            float(self.current_position[0]) - distance_inches,
+            float(self.current_position[1]),
+            float(self.current_position[2]),
+        ]
+
+        starting_guess = self.current_solution.copy()
+
+        starting_guess[1] = math.atan2(
+            -target[0],
+            target[1],
+        )
+
+        solution, error = solve_ik(
+            target,
+            starting_guess,
+        )
+
+        self.accept_movement(
+            target,
+            solution,
+            error,
+        )
+
+
+    def move_to(self, x, y, z):
+        """
+        Move to an absolute URDF XYZ coordinate.
+        """
+
+        target = [
+            float(x),
+            float(y),
+            float(z),
+        ]
+
+        starting_guess = self.current_solution.copy()
+
+        # Supply a useful base-angle estimate whenever the target
+        # is not directly above the base.
+        if abs(target[0]) > 1e-9 or abs(target[1]) > 1e-9:
+            starting_guess[1] = math.atan2(
+                -target[0],
+                target[1],
+            )
+
+        solution, error = solve_ik(
+            target,
+            starting_guess,
+        )
+
+        self.accept_movement(
+            target,
+            solution,
+            error,
+        )
+
+    def rotate_wrist(self, degrees_clockwise):
+        """
+        Rotate only the wrist.
+
+        Positive input means clockwise.
+        Negative input means counterclockwise.
+        """
+
+        degrees_clockwise = float(
+            degrees_clockwise
+        )
+
+        if degrees_clockwise == 0:
+            raise ValueError(
+                "Wrist rotation cannot be zero."
+            )
+
+        # Python joint signs are opposite the physical directions
+        # established by the working Arduino tests.
+        wrist_command = -degrees_clockwise
+
+        print(
+            "Sending wrist-only movement:"
+        )
+        print(
+            f"  Requested physical rotation: "
+            f"{degrees_clockwise:.6f} degrees"
+        )
+        print(
+            f"  Wrist value sent to Arduino: "
+            f"{wrist_command:.6f} degrees"
+        )
+
+        self.arduino.move_and_wait(
+            0.0,
+            0.0,
+            0.0,
+            wrist_command,
+        )
+
+        # Keep Python's wrist angle synchronized with the command.
+        self.current_solution[4] += math.radians(
+            wrist_command
+        )
+
+        print("Wrist movement completed.")
+
+
+    def reset_to_start(self):
+        """
+        Return the motors to the step positions recorded when the
+        Arduino started, then reset the Python model to home.
+        """
+
+        print(
+            "Returning robot to startup position..."
+        )
+
+        # The Arduino returns every motor to currentPosition() == 0.
+        self.arduino.reset_and_wait()
+
+        # Update Python only after the Arduino reports DONE.
+        self.current_solution = self.home_solution.copy()
+        self.current_position = list(HOME_TARGET_IN)
+
+        print(
+            "Reset completed. Current tool position:",
+            self.current_position,
+        )
 
 
     def get_position(self):

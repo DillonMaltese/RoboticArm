@@ -3,26 +3,38 @@ from robot_control import RobotController
 
 robot = RobotController()
 
+
 try:
     robot.connect()
 
     print("Robot connected.")
-    print("Commands: forward, backward, left, right, up, down, quit")
+    print(
+        "Commands: forward, backward, left, right, "
+        "up, down, reset, quit"
+    )
 
     while True:
-        direction = input("\nDirection: ").strip().lower()
+        direction = input(
+            "\nDirection: "
+        ).strip().lower()
 
         if direction == "quit":
             break
 
-        if direction not in {
+        if direction == "reset":
+            robot.reset_to_start()
+            continue
+
+        valid_directions = {
             "forward",
             "backward",
             "left",
             "right",
             "up",
             "down",
-        }:
+        }
+
+        if direction not in valid_directions:
             print("Unknown direction.")
             continue
 
@@ -30,11 +42,19 @@ try:
             distance = float(
                 input("Distance in inches: ")
             )
+        except ValueError:
+            print(
+                "Distance must be a number."
+            )
+            continue
 
-            if distance <= 0:
-                print("Distance must be greater than zero.")
-                continue
+        if distance <= 0:
+            print(
+                "Distance must be greater than zero."
+            )
+            continue
 
+        try:
             if direction == "forward":
                 robot.move_forward(distance)
 
@@ -54,10 +74,20 @@ try:
                 robot.move_down(distance)
 
         except ValueError as error:
-            print("Invalid movement:", error)
+            print(
+                f"Invalid movement: {error}"
+            )
 
         except RuntimeError as error:
-            print("Robot error:", error)
+            print(
+                f"Movement failed: {error}"
+            )
+
+        except TimeoutError as error:
+            print(
+                f"Arduino timeout: {error}"
+            )
+
 
 finally:
     robot.disconnect()
